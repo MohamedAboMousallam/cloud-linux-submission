@@ -2,6 +2,7 @@ import os
 import paramiko
 import select
 import time
+from .exceptions import VMConnectionError, CommandTimeoutError, VMRebootDetectedError, AuthenticationError
 
 class SSHConnection:
     def __init__(self, host: str, user:str, key_path:str, port: int, connection_timeout: int = 10 ):
@@ -14,19 +15,24 @@ class SSHConnection:
     
     def connect(self):
         """open a ssh using the parameters which was stored"""
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if self.key_path:
-            client.connect(
-                hostname=self.host,
-                username=self.user,
-                port=self.port,
-                key_filename=os.path.expanduser(self.key_path),
-                timeout=self.connection_timeout
-            )
-        else:
-            raise ValueError("Key_path is required for connecting to the vm using key-based authenticating")
-        self.client = client
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            if self.key_path:
+                client.connect(
+                    hostname=self.host,
+                    username=self.user,
+                    port=self.port,
+                    key_filename=os.path.expanduser(self.key_path),
+                    timeout=self.connection_timeout
+                )
+            else:
+                raise ValueError("Key_path is required for connecting to the vm using key-based authenticating")
+            self.client = client
+        except paramiko.AuthenticationException as e:
+            raise AuthenticationError("SSH authentication failed") from e
+        except (paramiko.SSHException, OSError) as e:
+            raise VMConnectionError(f"failed to connect to the VM at {self.host}:{self.port}", e) from e
 
     def close(self):
         if self.client:
@@ -35,7 +41,7 @@ class SSHConnection:
 
     def execute(self, command, timeout=None, output_callback=None):
         if not self.client:
-            raise ConnectionError("Not connected to VM")
+           raise VMConnectionError("Not connected to VM")
         
         start_time = time.time()
         _, stdout, stderr = self.client.exec_command(command)
@@ -51,7 +57,7 @@ class SSHConnection:
                 remaining_timeout = timeout - elapsed
                 if remaining_timeout <= 0:
                     stdout.channel.close()
-                    raise TimeoutError(f"Command timed out after {timeout} seconds")
+                    raise CommandTimeoutError(command, timeout)
                 select_timeout = min(1.0, remaining_timeout)  # Check every second max
             else:
                 select_timeout = 1.0
@@ -89,3 +95,4 @@ class SSHConnection:
                 output_callback(f"STDERR: {line.strip()}")
         
         return stdout.channel.recv_exit_status()
+    
