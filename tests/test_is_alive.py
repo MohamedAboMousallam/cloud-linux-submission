@@ -24,3 +24,22 @@ def test_is_alive_sets_confidence_correctly(mock_os_detect, ssh_connection):
         return {'os_active': True}
     mock_os_detect.side_effect = side_effect
     assert ssh_connection.is_alive() is True
+
+@patch("vm_connection.detect_os_activity")
+@patch("vm_connection.check_ssh_connectivity")
+def test_is_alive_returns_true_when_vm_responsive(mock_ssh_check, mock_os_detect, ssh_connection):
+    """Test that is_alive returns True when VM is responsive"""
+    def mock_os_detect_side_effect(host, port, result):
+        result['checks_passed'] = 3
+        result['checks_failed'] = 0
+        return {'os_active': True}
+    
+    def mock_ssh_check_side_effect(conn, result):
+        result['checks_passed'] += 1
+        return True
+    
+    mock_os_detect.side_effect = mock_os_detect_side_effect
+    mock_ssh_check.side_effect = mock_ssh_check_side_effect
+    result = ssh_connection.is_alive()
+    assert result is True
+    mock_os_detect.assert_called_once()
