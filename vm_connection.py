@@ -12,6 +12,7 @@ Example:
 """
 import os
 import paramiko
+import paramiko.buffered_pipe
 import time
 import select
 import logging
@@ -33,34 +34,15 @@ class VMConnectionError(Exception):
         super().__init__(message)
         self.original_error = original_error
 
-    def __str__(self):
-        if self.original_error:
-            return f"{super().__str__()} (Original: {self.original_error})"
-        return super().__str__()
-
-
-class CommandTimeoutError(Exception):
+class CommandTimeoutError(VMConnectionError):
     def __init__(self, command: str, timeout: int):
+        super().__init__(f"Command '{command}' timed out after {timeout} seconds")
         self.command = command
         self.timeout = timeout
-        super().__init__(f"Command '{command}' timed out after {timeout} seconds")
 
-
-class VMRebootDetectedError(Exception):
+class VMRebootDetectedError(VMConnectionError):
     def __init__(self, message: str = "Unexpected VM reboot detected"):
         super().__init__(message)
-
-
-class VMNotAliveError(Exception):
-    def __init__(self, message: str = "VM is not alive or responsive"):
-        super().__init__(message)
-
-
-class VMStateError(Exception):
-    def __init__(self, message: str, state_info=None):
-        super().__init__(message)
-        self.state_info = state_info
-
 
 class AuthenticationError(VMConnectionError):
     def __init__(self, message: str = "SSH authentication failed"):
@@ -70,6 +52,24 @@ class AuthenticationError(VMConnectionError):
 # ============================================================================
 # HEALTH CHECKS
 # ============================================================================
+
+class HealthCheckConfig:
+    """Configuration constants for health checks."""
+    DEFAULT_PING_COUNT = 3
+    DEFAULT_PING_TIMEOUT = 1
+    DEFAULT_PING_PROCESS_TIMEOUT = 8
+    
+    DEFAULT_SOCKET_TIMEOUT = 2.0
+    QUICK_RESPONSE_THRESHOLD = 0.5
+    MIN_QUICK_REJECTIONS = 2
+    
+    DEFAULT_TCP_TESTS = 3
+    MIN_QUICK_TCP_RESPONSES = 2
+    
+    DEFAULT_TEST_PORTS = [22, 80, 443]
+    
+    ALIVE_CONFIDENCE_THRESHOLD = 0.6
+    SSH_CONFIDENCE_THRESHOLD = 0.7
 
 def detect_os_activity(host, port, result):
     """
@@ -130,11 +130,11 @@ def test_ping(host, result, detection_result):
     """Test basic ICMP connectivity."""
     try:
         if platform.system().lower().startswith('win'):
-            cmd = ['ping', '-n', '3', '-w', '1000', host]
+            cmd = ['ping', '-n', str(HealthCheckConfig.DEFAULT_PING_COUNT), '-w', str(HealthCheckConfig.DEFAULT_PING_TIMEOUT * 1000), host]
         else:
-            cmd = ['ping', '-c', '3', '-W', '1', host]
+            cmd = ['ping', '-c', str(HealthCheckConfig.DEFAULT_PING_COUNT), '-W', str(HealthCheckConfig.DEFAULT_PING_TIMEOUT), host]
 
-        ping_result = subprocess.run(cmd, capture_output=True, timeout=8, text=True)
+        ping_result = subprocess.run(cmd, capture_output=True, timeout=HealthCheckConfig.DEFAULT_PING_PROCESS_TIMEOUT, text=True)
 
         if ping_result.returncode == 0:
             result['checks_passed'] += 1
@@ -157,26 +157,26 @@ def test_ping(host, result, detection_result):
 def analyze_port_behavior(host, port, result, detection_result):
     """Check how the VM responds to TCP connection attempts."""
     port_analysis = {'quick_rejection': False, 'any_response': False}
-    test_ports = [port, 80, 22, 443]
+    test_ports = [port] + HealthCheckConfig.DEFAULT_TEST_PORTS
 
     quick_rejections = 0
     for p in test_ports:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2.0)
+            sock.settimeout(HealthCheckConfig.DEFAULT_SOCKET_TIMEOUT)
             start_time = time.time()
             res = sock.connect_ex((host, p))
             elapsed = time.time() - start_time
             if res == 0:
                 port_analysis['any_response'] = True
-            elif elapsed < 0.5:
+            elif elapsed < HealthCheckConfig.QUICK_RESPONSE_THRESHOLD:
                 quick_rejections += 1
                 port_analysis['any_response'] = True
             sock.close()
         except Exception:
             continue
 
-    if quick_rejections >= 2:
+    if quick_rejections >= HealthCheckConfig.MIN_QUICK_REJECTIONS:
         port_analysis['quick_rejection'] = True
         detection_result['port_behavior'] = 'quick_rejection'
         result['checks_passed'] += 1
@@ -195,9 +195,9 @@ def test_tcp_stack(host, port, result, detection_result):
     """Test TCP stack responsiveness."""
     try:
         responses = []
-        for _ in range(3):
+        for _ in range(HealthCheckConfig.DEFAULT_TCP_TESTS):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1.0)
+            sock.settimeout(HealthCheckConfig.DEFAULT_PING_TIMEOUT)
             try:
                 start = time.time()
                 code = sock.connect_ex((host, port))
@@ -205,8 +205,8 @@ def test_tcp_stack(host, port, result, detection_result):
                 responses.append((code, elapsed))
             finally:
                 sock.close()
-        quick_responses = sum(1 for _, t in responses if t < 0.5)
-        if quick_responses >= 2:
+        quick_responses = sum(1 for _, t in responses if t < HealthCheckConfig.QUICK_RESPONSE_THRESHOLD)
+        if quick_responses >= HealthCheckConfig.MIN_QUICK_TCP_RESPONSES:
             detection_result['tcp_stack_active'] = True
             result['checks_passed'] += 1
             return True
@@ -420,14 +420,20 @@ class SSHConnection:
                 # Handle select errors (like on Windows)
                 break
 
-        # Get any remaining output
-        for line in stdout.readlines():
-            if output_callback:
-                output_callback(line.strip())
+        # Get any remaining output (with timeout protection)
+        try:
+            for line in stdout.readlines():
+                if output_callback:
+                    output_callback(line.strip())
+        except (socket.timeout, paramiko.buffered_pipe.PipeTimeout):
+            pass  # Channel timed out, ignore remaining output
 
-        for line in stderr.readlines():
-            if output_callback:
-                output_callback(f"STDERR: {line.strip()}")
+        try:
+            for line in stderr.readlines():
+                if output_callback:
+                    output_callback(f"STDERR: {line.strip()}")
+        except (socket.timeout, paramiko.buffered_pipe.PipeTimeout):
+            pass  # Channel timed out, ignore remaining output
 
         return stdout.channel.recv_exit_status()
 
@@ -560,7 +566,8 @@ class SSHConnection:
         
         raise CommandTimeoutError("Network disruption recovery", recovery_timeout)
 
-
+# SSHConnection: Low-level SSH operations
+# VMConnection: High-level VM management
 # ============================================================================
 # VM CONNECTION WRAPPER CLASS
 # ============================================================================
@@ -606,6 +613,10 @@ class VMConnection:
         # 1. Detect OS activity via network-level checks
         detection_result = detect_os_activity(self.ssh.host, self.ssh.port, result)
         result.update(detection_result)
+        
+        # Set network reachability based on detection results
+        result['network_reachable'] = detection_result['network_responsive']
+        result['os_signs_detected'] = detection_result['os_active']
 
         # 2. SSH-based checks if network reachable
         if result['network_reachable']:
@@ -621,6 +632,7 @@ class VMConnection:
         total_checks = result['checks_passed'] + result['checks_failed']
         if total_checks > 0:
             result['confidence'] = result['checks_passed'] / total_checks
+            # VM is alive if OS is detected OR SSH works with good confidence
             if result['os_signs_detected'] and result['confidence'] > 0.6:
                 result['alive'] = True
             elif result['ssh_available'] and result['confidence'] > 0.7:
