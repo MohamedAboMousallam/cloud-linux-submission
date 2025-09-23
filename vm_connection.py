@@ -531,40 +531,7 @@ class SSHConnection:
             raise VMConnectionError(f"Failed to get boot ID: {error}")
         return boot_id
 
-    def execute_network_disruptive(self, command, timeout=300, recovery_timeout=120):
-        """Execute commands that may disrupt network connectivity with recovery strategy"""
-        # Record state before execution
-        self.record_boot_id()
-        
-        try:
-            # Execute with extended timeout
-            return self.execute(command, timeout=timeout)
-        except CommandTimeoutError:
-            # Command timed out - enter recovery mode
-            return self._recover_from_network_disruption(recovery_timeout)
 
-    def _recover_from_network_disruption(self, recovery_timeout):
-        """Progressive recovery strategy for network-disrupting commands"""
-        start_time = time.time()
-        
-        while time.time() - start_time < recovery_timeout:
-            # Wait for network recovery
-            time.sleep(5)
-            
-            # Check if VM is alive using network-level checks first
-            if self.is_alive('basic'):
-                try:
-                    # Attempt reconnection
-                    if self.reconnect():
-                        # Verify VM didn't reboot
-                        self.check_reboot()
-                        return 0  # Assume command completed successfully
-                except VMRebootDetectedError:
-                    raise
-                except Exception:
-                    continue
-        
-        raise CommandTimeoutError("Network disruption recovery", recovery_timeout)
 
 # SSHConnection: Low-level SSH operations
 # VMConnection: High-level VM management
@@ -593,10 +560,6 @@ class VMConnection:
         return self.ssh.execute(command, timeout=timeout, output_callback=output_callback)
 
     def is_alive(self, level='medium'):
-        """
-        High-level VM health check combining network-level and SSH-level indicators.
-        Returns a detailed dictionary with health status and confidence.
-        """
         result = {
             'alive': False,
             'confidence': 0.0,
@@ -610,36 +573,38 @@ class VMConnection:
             'detailed_status': {}
         }
 
-        # 1. Detect OS activity via network-level checks
+        # 1. Always do network-level checks
         detection_result = detect_os_activity(self.ssh.host, self.ssh.port, result)
         result.update(detection_result)
-        
-        # Set network reachability based on detection results
         result['network_reachable'] = detection_result['network_responsive']
         result['os_signs_detected'] = detection_result['os_active']
 
-        # 2. SSH-based checks if network reachable
-        if result['network_reachable']:
+        # 2. SSH checks for medium and thorough levels (regardless of network status)
+        if level in ['medium', 'thorough']:
             ssh_ok = check_ssh_connectivity(self.ssh, result)
             result['ssh_available'] = ssh_ok
-
-            if ssh_ok:
-                check_system_services(self.ssh, result, level)
+            
+            # 3. System services only for thorough level
             if level == 'thorough':
-                advanced_os_detection(self.ssh, result)
+                if ssh_ok:
+                    check_system_services(self.ssh, result, level='thorough')
+                    advanced_os_detection(self.ssh, result)
+                else:
+                    result['failed_checks'].extend([
+                    'System services check skipped - SSH unavailable',
+                    'Advanced OS detection skipped - SSH unavailable'])
+                    result['checks_failed'] += 2
 
-        # 3. Compute confidence and decide alive status
+        # 4. Decision logic
         total_checks = result['checks_passed'] + result['checks_failed']
         if total_checks > 0:
             result['confidence'] = result['checks_passed'] / total_checks
-            # VM is alive if OS is detected OR SSH works with good confidence
             if result['os_signs_detected'] and result['confidence'] > 0.6:
                 result['alive'] = True
             elif result['ssh_available'] and result['confidence'] > 0.7:
                 result['alive'] = True
 
         return result
-
 
 # ============================================================================
 # EXPORTS
