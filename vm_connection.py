@@ -103,13 +103,13 @@ def detect_os_activity(host, port, result):
     }
 
     # Tier 1: ICMP ping
-    ping_success = test_ping(host, result, detection_result)
+    ping_success = _test_ping_internal(host, result, detection_result)
 
     # Tier 2: TCP port behavior
     port_analysis = analyze_port_behavior(host, port, result, detection_result)
 
     # Tier 3: TCP stack responsiveness
-    tcp_stack_active = test_tcp_stack(host, port, result, detection_result)
+    tcp_stack_active = _test_tcp_stack_internal(host, port, result, detection_result)
 
     # Aggregate evidence
     os_indicators = 0
@@ -126,7 +126,7 @@ def detect_os_activity(host, port, result):
     return detection_result
 
 
-def test_ping(host, result, detection_result):
+def _test_ping_internal(host, result, detection_result):
     """Test basic ICMP connectivity."""
     try:
         if platform.system().lower().startswith('win'):
@@ -191,7 +191,7 @@ def analyze_port_behavior(host, port, result, detection_result):
     return port_analysis
 
 
-def test_tcp_stack(host, port, result, detection_result):
+def _test_tcp_stack_internal(host, port, result, detection_result):
     """Test TCP stack responsiveness."""
     try:
         responses = []
@@ -438,12 +438,15 @@ class SSHConnection:
         return stdout.channel.recv_exit_status()
 
     def reconnect(self, retries=3, delay=3):
+        if retries <= 0:
+            return False
+            
         for attempt in range(1, retries + 1):
             try:
                 self.close()  # ensure old connection is gone
                 self.connect()
                 return True  # success
-            except VMConnectionError:
+            except (VMConnectionError, AuthenticationError, paramiko.SSHException, OSError):
                 if attempt < retries:
                     time.sleep(delay)
                 else:
