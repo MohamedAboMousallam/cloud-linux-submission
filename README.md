@@ -97,11 +97,11 @@ Aggregates results into a confidence score (≥60% with OS signs or ≥70% with 
 
 ## 2. Unexpected Reboot Detection
 
-* Relies on Linux kernel’s boot ID (/proc/sys/kernel/random/boot_id).
+* Relies on Linux kernel’s boot ID `(/proc/sys/kernel/random/boot_id)`.
 
-* record_boot_id() saves the current ID, check_reboot() compares it later.
+* `record_boot_id()` saves the current ID, `check_reboot()` compares it later.
 
-* A mismatch raises VMRebootDetectedError.
+* A mismatch raises `VMRebootDetectedError`.
 
 3. Testing Strategy
 
