@@ -13,15 +13,15 @@ it is required to implement the whole solution in a *module* not a package so th
 - SSH key-based authentication is preferred over password authentication for security and automation
 - Tests should run without requiring actual VM infrastructure (mock-based testing)
 ## Installation
-1. fork the repo then clone it
+1. Fork the repo, then clone it
 ```bash
 git clone < your forked repo link here >
 ```
-2. move into the folder
+2. Move into the folder
 ```bash
 cd cloud-linux-submission
 ```
-3. make a new virtual environment (on windows)
+3. Make a new virtual environment (on Windows)
 ```bash
  python -m venv venv
  .\venv\Scripts\activate
@@ -31,7 +31,7 @@ cd cloud-linux-submission
  python3 -m venv venv
  source venv/bin/activate
 ```
-4. install required dependencies 
+4. Install required dependencies 
 ```bash
 pip install -r requirements.txt
 ```
@@ -44,21 +44,16 @@ OR
 ```bash
 pytest -v
 ```
-## what is being tested in edge cases? 
+## What is being tested in edge cases? 
  Advanced Edge Cases Tests (5 tests)
     * Custom configurations: Non-standard ports, extended timeouts in `test_initialization_with_custom_port_and_timeout`
-
     * Callback flexibility: Command execution without output callbacks in 
     `test_execute_with_no_output_callback`
-
     * Invalid parameters: Graceful handling of unsupported health check levels in 
     `test_is_alive_with_invalid_level`
-
     * Boundary testing: Zero retry scenarios, empty check results
     in `test_reconnect_with_zero_retries`
-
     * Wrapper robustness: VMConnection behavior with no available health checks in `test_vm_connection_is_alive_with_zero_checks`
-
 ## Quick Start
 
 ```python
@@ -122,7 +117,7 @@ When running a command like a network stress test, I expect that it may disrupt 
 
 I would first log the start of the test and its parameters, and run it inside a wrapper script that handles cleanup and sets a completion marker when finished.
 
-I would also store all output locally on the VM (for example in `/var/log/stress_test.log)` so I can review it later even if the SSH session is lost.
+I would also store all output locally on the VM in a log file (for example in `/var/log/stress_test.log)` so I can review it later even if the SSH session is lost.
 
 For resilient execution, I would use tools such as` nohup, screen, or tmux` so the process continues running independently of the SSH connection. For example:
 
