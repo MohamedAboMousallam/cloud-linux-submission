@@ -7,6 +7,11 @@ A resilient Python module for managing SSH connections to remote Linux VMs with 
 - **Real-time Command Execution**: Stream command output with timeout support
 - **Multi-layer Health Checks**: Network, SSH, and system-level VM monitoring
 - **Reboot Detection**: Track VM reboots using kernel boot IDs
+## Few Assumptions about the task 
+it is required to implement the whole solution in a *module* not a package so that's why `vm_connection` includes all the solution for this assignment 
+- Target VMs are Linux-based systems with standard `/proc/sys/kernel/random/boot_id` available for reboot detection
+- SSH key-based authentication is preferred over password authentication for security and automation
+- Tests should run without requiring actual VM infrastructure (mock-based testing)
 ## Installation
 1. fork the repo then clone it
 ```bash
