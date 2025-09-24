@@ -75,6 +75,7 @@ vm.connect()
 health = vm.is_alive(level='thorough')
 print(f"VM alive: {health['alive']}, confidence: {health['confidence']:.2f}")
 ```
+Find a demo on Loom [here](https://www.loom.com/share/88dec59e04f04bd19e6082ab20b81b6c?sid=36006a00-02c4-4724-8615-daef7d7e8e26)
 
 ## Core Classes
 
