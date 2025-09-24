@@ -45,7 +45,7 @@ OR
 pytest -v
 ```
 ## what is being tested in edge cases? 
-9. Advanced Edge Cases Tests (5 tests)
+ Advanced Edge Cases Tests (5 tests)
     * Custom configurations: Non-standard ports, extended timeouts in `test_initialization_with_custom_port_and_timeout`
 
     * Callback flexibility: Command execution without output callbacks in 
@@ -108,7 +108,7 @@ Aggregates results into a confidence score (≥60% with OS signs or ≥70% with 
 
 * A mismatch raises `VMRebootDetectedError`.
 
-3. Testing Strategy
+## 3. Testing Strategy
 
 * Unit tests with mocks to simulate SSH success/failure, timeouts, and exceptions.
 
