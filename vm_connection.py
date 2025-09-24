@@ -616,7 +616,5 @@ __all__ = [
     'VMConnectionError',
     'CommandTimeoutError',
     'VMRebootDetectedError',
-    'VMNotAliveError',
-    'VMStateError',
     'AuthenticationError'
 ]
