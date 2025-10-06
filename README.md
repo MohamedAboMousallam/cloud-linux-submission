@@ -46,14 +46,11 @@ pytest -v
 ```
 ## What is being tested in edge cases? 
  Advanced Edge Cases Tests (5 tests)
-    * Custom configurations: Non-standard ports, extended timeouts in `test_initialization_with_custom_port_and_timeout`
-    * Callback flexibility: Command execution without output callbacks in 
-    `test_execute_with_no_output_callback`
-    * Invalid parameters: Graceful handling of unsupported health check levels in 
-    `test_is_alive_with_invalid_level`
-    * Boundary testing: Zero retry scenarios, empty check results
-    in `test_reconnect_with_zero_retries`
-    * Wrapper robustness: VMConnection behavior with no available health checks in `test_vm_connection_is_alive_with_zero_checks`
+  * Custom configurations: Non-standard ports, extended timeouts in `test_initialization_with_custom_port_and_timeout`
+  * Callback flexibility: Command execution without output callbacks in `test_execute_with_no_output_callback`
+  * Invalid parameters: Graceful handling of unsupported health check levels in `test_is_alive_with_invalid_level`
+  * Boundary testing: Zero retry scenarios, empty check results in `test_reconnect_with_zero_retries`
+  * Wrapper robustness: VMConnection behavior with no available health checks in `test_vm_connection_is_alive_with_zero_checks`
 ## Quick Start
 
 ```python
